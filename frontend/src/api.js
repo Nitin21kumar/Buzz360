@@ -1,8 +1,28 @@
 import axios from 'axios'
+import { firebaseAuth } from './lib/firebase.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 export const api = axios.create({ baseURL: API_BASE })
+
+// Every request carries the current Firebase ID token, which the backend
+// verifies on every protected route (see backend/app/auth.py) — this is
+// what actually enforces roles/permissions, not just the frontend UI.
+api.interceptors.request.use(async (config) => {
+  const user = firebaseAuth.currentUser
+  if (user) {
+    const token = await user.getIdToken()
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// --- Users & permissions (role-based access control) ---
+export const getMyProfile = () => api.get('/api/users/me')
+export const listUsers = () => api.get('/api/users')
+export const createUser = (payload) => api.post('/api/users', payload)
+export const updateUser = (uid, payload) => api.patch(`/api/users/${uid}`, payload)
+export const deleteUser = (uid) => api.delete(`/api/users/${uid}`)
 
 // --- Voice Folders (independent of OBD campaigns) ---
 export const createVoiceFolder = (name) => api.post('/api/tts/folders', { name })
@@ -37,7 +57,30 @@ export const uploadCampaignAudio = (id, file) => {
   form.append('file', file)
   return api.post(`/api/campaigns/${id}/upload-audio`, form)
 }
+// Direct <a href> links can't carry the Firebase auth token (browser
+// navigation doesn't run our axios interceptor), and these report endpoints
+// now require auth like everything else — so downloads go through this
+// authenticated blob-fetch instead of a plain link.
+async function downloadAuthenticatedFile(url, filename) {
+  const response = await api.get(url, { responseType: 'blob' })
+  const blobUrl = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(blobUrl)
+}
+
 export const getCampaignAudioUrl = (id) => `${API_BASE}/api/campaigns/${id}/audio`
+// The <audio> element's src also can't carry an auth header (same problem as
+// direct <a href> report links), so preview playback fetches the audio as an
+// authenticated blob and hands the <audio> tag a local object URL instead.
+export const getCampaignAudioBlobUrl = async (id) => {
+  const response = await api.get(`/api/campaigns/${id}/audio`, { responseType: 'blob' })
+  return window.URL.createObjectURL(new Blob([response.data]))
+}
 export const uploadCampaignContacts = (id, file) => {
   const form = new FormData()
   form.append('file', file)
@@ -47,6 +90,46 @@ export const deleteCampaignContacts = (id) => api.delete(`/api/campaigns/${id}/c
 export const startCampaign = (id) => api.post(`/api/campaigns/${id}/start`)
 export const getCampaignStatus = (id) => api.get(`/api/campaigns/${id}/status`)
 export const getCampaignReportUrl = (id) => `${API_BASE}/api/campaigns/${id}/report`
+export const downloadCampaignReport = (id) => downloadAuthenticatedFile(`/api/campaigns/${id}/report`, `campaign_${id}_report.xlsx`)
 export const getObdOverview = () => api.get('/api/obd/overview')
 export const getDailyStats = () => api.get('/api/obd/daily-stats')
 export const getCampaignPerformance = () => api.get('/api/obd/campaign-performance')
+
+// --- WhatsApp ---
+export const createWhatsAppCampaign = (name, templateName, templateLanguage, campaignContext, messageText, sourceLanguageCode) =>
+  api.post('/api/whatsapp', {
+    name, template_name: templateName, template_language: templateLanguage,
+    campaign_context: campaignContext, message_text: messageText, source_language_code: sourceLanguageCode,
+  })
+export const listWhatsAppCampaigns = () => api.get('/api/whatsapp')
+export const deleteWhatsAppCampaign = (id) => api.delete(`/api/whatsapp/${id}`)
+export const uploadWhatsAppContacts = (id, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/api/whatsapp/${id}/upload-contacts`, form)
+}
+export const deleteWhatsAppContacts = (id) => api.delete(`/api/whatsapp/${id}/contacts`)
+export const startWhatsAppCampaign = (id) => api.post(`/api/whatsapp/${id}/start`)
+export const getWhatsAppCampaignStatus = (id) => api.get(`/api/whatsapp/${id}/status`)
+export const getWhatsAppReportUrl = (id) => `${API_BASE}/api/whatsapp/${id}/report`
+export const downloadWhatsAppReport = (id) => downloadAuthenticatedFile(`/api/whatsapp/${id}/report`, `whatsapp_campaign_${id}_report.xlsx`)
+export const listWhatsAppConversations = () => api.get('/api/whatsapp/conversations')
+export const getWhatsAppConversation = (phoneNumber) => api.get(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/messages`)
+export const createWhatsAppTemplate = (name, category, languageCode, bodyExample, staticPrefix, staticSuffix) =>
+  api.post('/api/whatsapp/templates', { name, category, language_code: languageCode, body_example: bodyExample, static_prefix: staticPrefix, static_suffix: staticSuffix })
+export const listWhatsAppTemplates = () => api.get('/api/whatsapp/templates')
+
+// --- WhatsApp Inbound: keyword rules, AI knowledge base, conversation status/handoff ---
+export const listKeywordRules = () => api.get('/api/whatsapp/keyword-rules')
+export const createKeywordRule = (keyword, replyText, matchType) =>
+  api.post('/api/whatsapp/keyword-rules', { keyword, reply_text: replyText, match_type: matchType })
+export const deleteKeywordRule = (id) => api.delete(`/api/whatsapp/keyword-rules/${id}`)
+export const getWhatsAppSettings = () => api.get('/api/whatsapp/settings')
+export const updateWhatsAppSettings = (knowledgeBase) => api.put('/api/whatsapp/settings', { knowledge_base: knowledgeBase })
+export const setConversationStatus = (phoneNumber, status) =>
+  api.patch(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/status`, { status })
+export const setConversationHandoff = (phoneNumber, handoff) =>
+  api.patch(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/handoff`, { handoff })
+export const sendManualMessage = (phoneNumber, text) =>
+  api.post(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/send`, { text })
+export const getHandoffCount = () => api.get('/api/whatsapp/handoff-count')

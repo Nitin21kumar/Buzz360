@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import { Megaphone, UploadCloud, Music, FileSpreadsheet, Play, CheckCircle2, XCircle, Loader2, Download, RefreshCw, Eye, ArrowLeft, Lock, Trash2 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 import * as api from '../api'
+import PermissionNotice from './PermissionNotice.jsx'
 
 export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashboard }) {
   const [campaigns, setCampaigns] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [view, setView] = useState('list') // list | create | detail
+  const [noViewAccess, setNoViewAccess] = useState(false)
 
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -19,20 +21,39 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
   const [uploadingContacts, setUploadingContacts] = useState(false)
   const [deletingContacts, setDeletingContacts] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [downloadingReportId, setDownloadingReportId] = useState(null)
   const [starting, setStarting] = useState(false)
   const [status, setStatus] = useState(null)
 
   const activeCampaign = campaigns.find((c) => c.id === activeId) || null
   const launched = activeCampaign ? activeCampaign.status !== 'draft' : false
 
+  const [audioBlobUrl, setAudioBlobUrl] = useState(null)
+  useEffect(() => {
+    if (!activeCampaign?.audio_filename) { setAudioBlobUrl(null); return }
+    let cancelled = false
+    let objectUrl = null
+    api.getCampaignAudioBlobUrl(activeCampaign.id).then((url) => {
+      if (cancelled) { window.URL.revokeObjectURL(url); return }
+      objectUrl = url
+      setAudioBlobUrl(url)
+    }).catch(() => setAudioBlobUrl(null))
+    return () => { cancelled = true; if (objectUrl) window.URL.revokeObjectURL(objectUrl) }
+  }, [activeCampaign?.id, activeCampaign?.audio_filename])
+
   const loadCampaigns = async () => {
-    const res = await api.listCampaigns()
-    setCampaigns(res.data)
-    return res.data
+    try {
+      const res = await api.listCampaigns()
+      setCampaigns(res.data)
+      return res.data
+    } catch (error) {
+      if (error?.response?.status === 403) { setNoViewAccess(true); return [] }
+      throw error
+    }
   }
 
   useEffect(() => { loadCampaigns() }, [])
-  useEffect(() => { api.listVoiceFolders().then((res) => setFolders(res.data)) }, [])
+  useEffect(() => { api.listVoiceFolders().then((res) => setFolders(res.data)).catch(() => {}) }, [])
   useEffect(() => { if (initialCreate) { setView('create'); onConsumeCreate() } }, [initialCreate])
   useEffect(() => {
     if (activeCampaign) setVoiceSourceId(activeCampaign.voice_source_folder_id || '')
@@ -154,6 +175,17 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
     }
   }
 
+  const handleDownloadReport = async (campaignId) => {
+    setDownloadingReportId(campaignId)
+    try {
+      await api.downloadCampaignReport(campaignId)
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Could not download the report')
+    } finally {
+      setDownloadingReportId(null)
+    }
+  }
+
   const chartData = status ? [
     { name: 'Completed', value: status.completed, color: '#22C55E' },
     { name: 'Failed / Declined', value: status.failed_or_declined, color: '#F04438' },
@@ -222,7 +254,7 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
               {activeCampaign.audio_filename && (
                 <>
                   <p style={styles.successHint}><CheckCircle2 size={13} /> Fallback audio: {activeCampaign.audio_filename}</p>
-                  <audio controls src={api.getCampaignAudioUrl(activeCampaign.id)} style={{ width: '100%', height: 32, marginTop: 6 }} />
+                  <audio controls src={audioBlobUrl || undefined} style={{ width: '100%', height: 32, marginTop: 6 }} />
                 </>
               )}
             </div>
@@ -278,9 +310,9 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
                     </div>
                   ) : <p style={styles.hint}>Chart appears once calls are triggered.</p>}
                 </div>
-                <a href={api.getCampaignReportUrl(activeCampaign.id)}>
-                  <button style={styles.downloadBtn}><Download size={16} /> Download Excel report</button>
-                </a>
+                <button style={styles.downloadBtn} onClick={() => handleDownloadReport(activeCampaign.id)} disabled={downloadingReportId === activeCampaign.id}>
+                  <Download size={16} /> {downloadingReportId === activeCampaign.id ? 'Downloading…' : 'Download Excel report'}
+                </button>
               </>
             ) : <div style={styles.emptyCard}><Megaphone size={22} color="var(--text-secondary)" /><p style={styles.hint}>Loading status…</p></div>}
           </div>
@@ -310,6 +342,9 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
       )}
 
       <div style={styles.card}>
+        {noViewAccess ? (
+          <PermissionNotice label="the campaigns list" />
+        ) : (
         <table style={styles.table}>
           <thead>
             <tr><th style={styles.th}>Campaign</th><th style={styles.th}>Status</th><th style={styles.th}>Created</th><th style={{ ...styles.th, textAlign: 'right' }}>Actions</th></tr>
@@ -324,7 +359,9 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
                 <td style={{ ...styles.td, color: 'var(--text-secondary)' }}>{new Date(c.created_at).toLocaleString()}</td>
                 <td style={{ ...styles.td, textAlign: 'right' }}>
                   <button onClick={() => { setActiveId(c.id); setStatus(null); setView('detail') }} style={styles.actionBtn}><Eye size={13} /> View</button>
-                  <a href={api.getCampaignReportUrl(c.id)}><button style={{ ...styles.actionBtn, marginLeft: 8 }}><Download size={13} /> Report</button></a>
+                  <button style={{ ...styles.actionBtn, marginLeft: 8 }} onClick={() => handleDownloadReport(c.id)} disabled={downloadingReportId === c.id}>
+                    <Download size={13} /> {downloadingReportId === c.id ? '…' : 'Report'}
+                  </button>
                   <button
                     onClick={() => handleDeleteCampaign(c.id, c.name)}
                     disabled={deletingId === c.id}
@@ -338,6 +375,7 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
             {campaigns.length === 0 && <tr><td colSpan={4} style={{ ...styles.td, textAlign: 'center', color: 'var(--text-secondary)', padding: '30px 0' }}>No campaigns yet — create one to get started.</td></tr>}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   )
@@ -349,7 +387,7 @@ const styles = {
   sub: { fontSize: 13.5, color: 'var(--text-secondary)', marginTop: 6 },
   backBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: 'none', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, padding: 0, marginBottom: 16 },
   refreshBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--border)', background: '#fff', fontSize: 12.5, fontWeight: 600 },
-  newBtn: { display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg, var(--accent-teal), #0EA5A0)', color: '#fff', fontSize: 13.5, fontWeight: 700 },
+  newBtn: { display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg, var(--accent-purple), var(--warning))', color: '#fff', fontSize: 13.5, fontWeight: 700 },
   lockedBanner: { display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderRadius: 12, background: 'var(--warning-soft)', color: '#92650B', fontSize: 13, fontWeight: 600, marginBottom: 16 },
   fadedSection: { opacity: 0.45, pointerEvents: 'none', filter: 'grayscale(0.3)' },
   grid: { display: 'grid', gridTemplateColumns: '1.05fr .95fr', gap: 20 },
@@ -359,7 +397,7 @@ const styles = {
   toggleBtnActive: { border: '1px solid var(--accent-purple)', background: 'var(--accent-purple-soft)', color: 'var(--accent-purple)' },
   select: { padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 13, background: '#fff' },
   primaryBtnSmall: { padding: '10px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-purple)', color: '#fff', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' },
-  primaryBtn: { width: '100%', marginTop: 10, padding: '12px 16px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-blue))', color: '#fff', fontSize: 14, fontWeight: 700 },
+  primaryBtn: { width: '100%', marginTop: 10, padding: '12px 16px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg, var(--accent-purple), var(--warning))', color: '#fff', fontSize: 14, fontWeight: 700 },
   hint: { fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 8 },
   successHint: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--success)', marginTop: 10, fontWeight: 600 },
   miniStat: { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 14 },

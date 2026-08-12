@@ -5,6 +5,8 @@ A fresh, standalone project with three features:
 - **Speech to Text** — upload audio and get a transcript (Sarvam AI, Saaras v3).
 - **OBD Campaigns** — upload a contact sheet + a voice message, auto-dial every contact via Sarv's Voice Broadcast API, and track status (polled from Sarv's Fetch Voice Report API). Includes an insights dashboard (total calls, success rate, recent activity) styled after the reference design.
 
+Want to run the whole thing with Docker on your own machine (not deploying anywhere)? See **`LOCAL_DOCKER.md`** instead of the steps below.
+
 ## Project Structure
 ```
 obd-suite/
@@ -107,6 +109,40 @@ This uses Sarv's **vb-api v2 `/broadcasting`** endpoint (confirmed against a rea
 
 ## A Note on Audio Storage Limits
 Since audio is stored as binary data inside a single MongoDB document, each individual recording is capped by MongoDB's 16MB-per-document limit — comfortably enough for typical voice-message-length content (several minutes of MP3 audio at 128kbps), but not suited to very long recordings (e.g. hour-long narrations). If you ever need audio longer than that, MongoDB's GridFS (for storing larger files split across chunks) would be the next step — let me know if you'd like that added.
+
+## Deploying to Render
+
+You need **two separate Render services** — one for the backend (FastAPI) and one for the frontend (`backend/Dockerfile` and `frontend/Dockerfile` are already separate, matching `docker-compose.yml` for local use).
+
+### Option A — One-click with the Blueprint (`render.yaml`)
+
+This repo includes a `render.yaml` at the root that defines both services together.
+
+1. Push this whole project (including `render.yaml`) to a GitHub repo. **Never push `backend/.env`, `backend/firebase-service-account.json`, or `frontend/.env`** — all three are already excluded by `.gitignore`; `backend/.env.example` and `frontend/.env.example` (safe, no real keys) are what get committed instead.
+2. In the Render Dashboard: **New → Blueprint**, pick your repo. Render reads `render.yaml` and shows you both services (`obd-backend`, `obd-frontend`).
+3. During setup, Render prompts you to fill in every variable marked `sync: false` — the Sarv/Sarvam/Groq/Mongo/WhatsApp keys from `backend/.env.example`. Leave `ALLOWED_ORIGINS` (backend) and `VITE_API_BASE_URL` (frontend) blank for now — see step 6.
+4. **Firebase service account**: on the `obd-backend` service, go to Environment → **Secret Files** → add a file at path `/etc/secrets/firebase-service-account.json`, paste in the contents of your downloaded service account JSON. `FIREBASE_SERVICE_ACCOUNT_PATH` is already pre-set in `render.yaml` to point there.
+5. Click **Apply** — Render builds and deploys both. `SARV_WEBHOOK_SECRET` is auto-generated for you, and the backend auto-detects its own public URL, so you don't need to set `PUBLIC_BASE_URL` on Render at all.
+6. Once both are live, copy each service's URL from the dashboard, then:
+   - On **obd-backend** → Environment → set `ALLOWED_ORIGINS` = your frontend's URL (e.g. `https://obd-frontend-xhzq.onrender.com`), save.
+   - On **obd-frontend** → Environment → set `VITE_API_BASE_URL` = your backend's URL (e.g. `https://obd-backend-xxxx.onrender.com`, no trailing slash) **and** all seven `VITE_FIREBASE_*` values from `frontend/.env.example` / your Firebase project's web app config, save. These all require a **new deploy** to take effect (Vite bakes them in at build time — click "Manual Deploy" if it doesn't redeploy automatically).
+7. Back in Firebase Console → Authentication → Settings → Authorized domains, add your frontend's Render domain (e.g. `obd-frontend-xhzq.onrender.com`), or Google Sign-In will fail there.
+
+### Option B — Create the two services manually
+
+If you'd rather not use the Blueprint:
+- **Backend**: New → Web Service → connect repo → set **Root Directory** to `backend` → Runtime: Docker → add all the env vars from `backend/.env.example`, generating a random `SARV_WEBHOOK_SECRET` yourself (`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`) → add the Firebase service account as a Secret File as in step 4 above. Leave `PUBLIC_BASE_URL` empty.
+- **Frontend**: New → Web Service → same repo → Root Directory `frontend` → Runtime: Docker → add `VITE_API_BASE_URL` plus all `VITE_FIREBASE_*` vars.
+- Then set `ALLOWED_ORIGINS` on the backend to the frontend's URL, same as step 6 above.
+
+### After both are deployed
+
+- **Sarv IP whitelisting**: Sarv rejects every call with error `003` until your outbound IP is whitelisted in the Sarv panel. On your backend service's page, click **Connect → Outbound** to see Render's outbound IP range for that service, and add it in [console.sarv.com](https://console.sarv.com). (Render's default ranges are shared CIDR blocks, not a single IP — if Sarv insists on one exact IP, you'll need Render's paid Dedicated IP add-on.)
+- **MongoDB Atlas**: make sure Atlas's Network Access allows connections from Render (either add Render's IP range from the same Outbound tab, or temporarily allow `0.0.0.0/0` if you're just testing).
+- **Verify basic health**: open `https://your-backend.onrender.com/health` — should show `{"status":"ok","mongodb_connected":true}`.
+- **Verify calling is fully wired up**: open `https://your-backend.onrender.com/api/campaigns/debug/deployment-check` — shows exactly which piece (public URL detection, webhook secret, Sarv credentials, Mongo) isn't configured yet, and a final `"ready_to_call": true/false`.
+- **The callback URL** Sarv now receives is built automatically as `https://your-backend.onrender.com/api/campaigns/webhooks/sarv-status?key=<SARV_WEBHOOK_SECRET>` — you never type this into the Sarv panel yourself, it's sent fresh on every broadcast request from `run_calls()` in `campaigns.py`. Anyone hitting that URL without the correct `key` gets a `403 Forbidden` and nothing is written to your database. Once a call is answered/busy/failed, this is what makes its status update in the Dashboard without you needing to refresh anything manually.
+- **Migrating from a deployment made before per-user data ownership**: campaigns/voice folders/history created before this update have no owner, so a plain "User" role account won't see them (admin/super_admin always still can). To hand old data to a specific account so it shows up for them too, run once: `python3 scripts/backfill_created_by.py --email you@example.com` (add `--dry-run` first to preview).
 
 ## Common Issues
 | Problem | Fix |
