@@ -1,4 +1,4 @@
-import os
+﻿import os
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -56,4 +56,5 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "mongodb_connected": check_connection()}
+    connected = check_connection()
+    return {"status": "ok", "postgresql_connected": connected, "mongodb_connected": connected}

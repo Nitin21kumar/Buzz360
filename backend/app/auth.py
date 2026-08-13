@@ -1,4 +1,4 @@
-"""
+﻿"""
 Every protected route depends on get_current_user (or one of the
 require_*() wrappers below), which:
   1. reads the Firebase ID token from the Authorization header
@@ -6,19 +6,59 @@ require_*() wrappers below), which:
   3. looks up (or, for the very first user ever, bootstraps) the matching
      profile + role + permissions in MongoDB
 
-This is what actually secures the API — the frontend hiding menu items is
+This is what actually secures the API â€” the frontend hiding menu items is
 just UX, not security. Every mutating/sensitive endpoint must depend on one
 of require_role() / require_permission() below, not just get_current_user.
 """
 from datetime import datetime, timezone
+import os
+from pathlib import Path
 
 from fastapi import Depends, HTTPException, Request
 from firebase_admin import auth as firebase_auth
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 
 from .database import users_collection
 from .firebase_admin_client import get_firebase_app
 from .permissions import default_permissions_for_role
 
+
+def _firebase_project_id() -> str:
+    """Read the Firebase project ID without requiring Admin SDK."""
+    configured = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    if configured:
+        return configured
+
+    frontend_env = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+    try:
+        for line in frontend_env.read_text(encoding="utf-8-sig").splitlines():
+            if line.strip().startswith("VITE_FIREBASE_PROJECT_ID="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def _verify_firebase_token(token: str) -> dict:
+    """Verify with Admin SDK, or Google's public certs when no key exists."""
+    try:
+        app = get_firebase_app()
+    except RuntimeError:
+        project_id = _firebase_project_id()
+        if not project_id:
+            raise RuntimeError(
+                "Firebase project ID is not configured. Set FIREBASE_PROJECT_ID "
+                "in backend/.env or VITE_FIREBASE_PROJECT_ID in frontend/.env."
+            )
+        decoded = google_id_token.verify_firebase_token(
+            token,
+            google_requests.Request(),
+            audience=project_id,
+        )
+        decoded["uid"] = decoded.get("sub")
+        return decoded
+    return firebase_auth.verify_id_token(token, app=app)
 
 def _extract_token(request: Request) -> str:
     header = request.headers.get("Authorization", "")
@@ -31,12 +71,11 @@ def get_current_user(request: Request) -> dict:
     """Verifies the caller's Firebase ID token and returns their MongoDB
     profile document (creating it on their very first authenticated
     request). The first user to ever hit this in a fresh database becomes
-    super_admin automatically — every other new user starts as role="user"
+    super_admin automatically â€” every other new user starts as role="user"
     with zero modules assigned, until an admin grants some."""
     token = _extract_token(request)
     try:
-        get_firebase_app()
-        decoded = firebase_auth.verify_id_token(token)
+        decoded = _verify_firebase_token(token)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     except Exception:
@@ -89,7 +128,7 @@ def require_role(*roles: str):
 
 
 def require_permission(module: str, service: str | None = None):
-    """FastAPI dependency factory — use as a route dependency to gate an
+    """FastAPI dependency factory â€” use as a route dependency to gate an
     endpoint behind a specific module (and optionally a specific service
     inside it), e.g. Depends(require_permission("campaigns", "delete"))."""
     def dependency(user: dict = Depends(get_current_user)) -> dict:
@@ -101,7 +140,7 @@ def require_permission(module: str, service: str | None = None):
 
 def require_any_permission(*checks: tuple[str, str | None]):
     """Like require_permission(), but passes if ANY of the given
-    (module, service) checks pass — useful when two frontend pages share one
+    (module, service) checks pass â€” useful when two frontend pages share one
     backend resource (e.g. the "Text to Speech" and "Manage Voices" pages
     both call the /api/tts/folders endpoints)."""
     def dependency(user: dict = Depends(get_current_user)) -> dict:
@@ -127,7 +166,7 @@ def owner_filter(user: dict) -> dict:
 
 
 def assert_owns_or_admin(user: dict, doc: dict | None):
-    """Raise 404 (not 403 — so a user can't even tell whether a given ID
+    """Raise 404 (not 403 â€” so a user can't even tell whether a given ID
     belongs to someone else) if this record isn't the caller's own and
     they're not an admin/super_admin."""
     if doc is None:

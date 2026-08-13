@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import {
   Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, Mic,
   MessageCircleMore, MessageSquareText, Radio, Sparkles,
@@ -7,7 +7,7 @@ import { FirebaseError } from 'firebase/app'
 import {
   browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword,
   GoogleAuthProvider, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail,
-  setPersistence, signInWithEmailAndPassword, signInWithPopup, updateProfile,
+  setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile,
 } from 'firebase/auth'
 import { toast } from 'sonner'
 import { firebaseAuth } from '../lib/firebase.js'
@@ -21,6 +21,9 @@ const AUTH_MESSAGES = {
   'auth/invalid-credential': 'Incorrect email or password.',
   'auth/weak-password': 'Use a password with at least 6 characters.',
   'auth/invalid-email': 'Enter a valid email address.',
+  'auth/operation-not-allowed': 'Email/password sign-in is disabled in Firebase. Enable it under Authentication > Sign-in method.',
+  'auth/admin-restricted-operation': 'Account creation is disabled for this Firebase project.',
+  'auth/network-request-failed': 'Could not reach Firebase. Check your internet connection and try again.',
   'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
   'auth/popup-blocked': 'Allow pop-ups for this site and try again.',
   'auth/unauthorized-domain': 'Add this domain under Firebase Authentication > Settings > Authorized domains.',
@@ -29,7 +32,8 @@ const AUTH_MESSAGES = {
 
 function authMessage(error) {
   const code = error instanceof FirebaseError ? error.code : ''
-  return AUTH_MESSAGES[code] || 'Authentication failed. Please try again.'
+  if (AUTH_MESSAGES[code]) return AUTH_MESSAGES[code]
+  return code ? `Authentication failed (${code}). Please try again.` : 'Authentication failed. Please try again.'
 }
 
 // Renders the login/signup screen and calls onAuthenticated once Firebase
@@ -43,6 +47,7 @@ export default function AuthPage({ onAuthenticated }) {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [accountCreated, setAccountCreated] = useState(false)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
@@ -76,10 +81,18 @@ export default function AuthPage({ onAuthenticated }) {
     setBusy(true)
     try {
       if (mode === 'signup') {
-        const result = await withPersistence(() => createUserWithEmailAndPassword(firebaseAuth, email.trim(), password))
-        if (name.trim()) await updateProfile(result.user, { displayName: name.trim() })
-        await sendEmailVerification(result.user)
-        toast.success('Account created. Verification email sent.')
+        sessionStorage.setItem('buzz-registration-in-progress', '1')
+        try {
+          const result = await withPersistence(() => createUserWithEmailAndPassword(firebaseAuth, email.trim(), password))
+          if (name.trim()) await updateProfile(result.user, { displayName: name.trim() })
+          await sendEmailVerification(result.user)
+          await signOut(firebaseAuth)
+          setPassword('')
+          setMode('signin')
+          setAccountCreated(true)
+        } finally {
+          sessionStorage.removeItem('buzz-registration-in-progress')
+        }
       } else {
         await withPersistence(() => signInWithEmailAndPassword(firebaseAuth, email.trim(), password))
       }
@@ -95,7 +108,7 @@ export default function AuthPage({ onAuthenticated }) {
     try {
       // handleCodeInApp: true means the emailed link brings the person back
       // to THIS app (with ?mode=resetPassword&oobCode=... in the URL) instead
-      // of Firebase's plain generic hosted page — App.jsx detects that and
+      // of Firebase's plain generic hosted page â€” App.jsx detects that and
       // shows our own branded ResetPasswordPage. Without this, Firebase would
       // show its own default reset UI.
       await sendPasswordResetEmail(firebaseAuth, email.trim(), {
@@ -117,6 +130,7 @@ export default function AuthPage({ onAuthenticated }) {
       showPassword={showPassword} setShowPassword={setShowPassword}
       rememberMe={rememberMe} setRememberMe={setRememberMe}
       busy={busy} google={google} microsoft={microsoft} submit={submit} reset={reset}
+      accountCreated={accountCreated} setAccountCreated={setAccountCreated}
     />
   )
 }
@@ -152,6 +166,16 @@ function AuthView(p) {
           </div>
 
           <ModeSwitch p={p} />
+          {p.accountCreated && (
+            <div className="auth-success-overlay" role="dialog" aria-modal="true" aria-labelledby="account-created-title">
+              <div className="auth-success-dialog">
+                <div className="auth-success-icon">✓</div>
+                <h2 id="account-created-title">Account created</h2>
+                <p>Your account has been registered. Check your verification email, then sign in with your email and password to access the dashboard.</p>
+                <button type="button" className="auth-submit-btn" onClick={() => p.setAccountCreated(false)}>Go to Sign In</button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </main>
@@ -177,7 +201,7 @@ function LoginStory() {
 
       <p className="auth-story-kicker">The All-in-One</p>
       <h2 className="auth-story-title">Conversational AI Platform</h2>
-      <p className="auth-story-tagline">Talk. Type. Reach. — All with AI.</p>
+      <p className="auth-story-tagline">Talk. Type. Reach. â€” All with AI.</p>
 
       <div className="auth-story-showcase">
         <ul className="auth-feature-list">
@@ -201,7 +225,7 @@ function LoginStory() {
 
 // A little "solar system": three channel icons orbit a glowing central bubble,
 // each ring spinning at its own speed while the icon itself counter-rotates
-// so it always stays upright — like a moon keeping the same face inward.
+// so it always stays upright â€” like a moon keeping the same face inward.
 function OrbitGraphic() {
   const orbiters = [
     { icon: MessageCircleMore, tone: 'whatsapp', radius: 108, duration: 14, angle: 30 },

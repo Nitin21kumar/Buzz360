@@ -297,3 +297,37 @@ html.dark .auth-provider-btn { background: var(--bg-card); }
 @media (max-width: 1023px) {
   .orbit-stage { display: none; }
 }
+
+.auth-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(5px);
+}
+.auth-success-dialog {
+  width: min(420px, 100%);
+  padding: 30px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-card);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  text-align: center;
+}
+.auth-success-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 28px;
+  font-weight: 800;
+}
+.auth-success-dialog h2 { margin: 0; color: var(--text-primary); font-size: 23px; }
+.auth-success-dialog p { margin: 12px 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }

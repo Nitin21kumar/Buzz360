@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { LoaderCircle, TriangleAlert } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { toast } from 'sonner'
@@ -22,7 +22,7 @@ import AccessDenied from './components/AccessDenied.jsx'
 const ALL_MODULES = ['dashboard', 'campaigns', 'whatsapp', 'tts', 'stt', 'voices', 'users']
 const MODULE_LABEL = { dashboard: 'Dashboard', campaigns: 'Campaigns', whatsapp: 'WhatsApp', tts: 'Text to Speech', stt: 'Speech to Text', voices: 'Manage Voices', users: 'User Management', sms: 'SMS', rcs: 'RCS' }
 // SMS and RCS are placeholder "coming soon" pages with no real functionality
-// or data yet, so — unlike every other module — they're open to any signed-in
+// or data yet, so â€” unlike every other module â€” they're open to any signed-in
 // user regardless of their granted permissions (mirrors Sidebar.jsx's
 // alwaysVisible flag for these two nav items).
 const ALWAYS_VISIBLE_MODULES = ['sms', 'rcs']
@@ -58,7 +58,7 @@ function App() {
 
   // If this page load is someone arriving from their "Reset your Buzz Connect
   // password" email, the URL carries Firebase's mode/oobCode params. This is
-  // checked independent of sign-in state — the person is very likely NOT
+  // checked independent of sign-in state â€” the person is very likely NOT
   // signed in when clicking a reset link.
   const [resetOobCode, setResetOobCode] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -72,7 +72,15 @@ function App() {
 
   useEffect(() => {
     if (missingFirebaseEnvVars.length) return
-    const unsub = onAuthStateChanged(firebaseAuth, (u) => {
+    const unsub = onAuthStateChanged(firebaseAuth, async (u) => {
+      if (u && sessionStorage.getItem('buzz-registration-in-progress') === '1') {
+        setUser(null)
+        setProfile(null)
+        setCatalog(null)
+        setCheckingAuth(false)
+        await signOut(firebaseAuth)
+        return
+      }
       setUser(u)
       setCheckingAuth(false)
       if (!u) { setProfile(null); setCatalog(null) }
@@ -201,8 +209,8 @@ function AuthenticatedApp({ user }) {
           {hasAccessToActive && active === 'stt' && <SpeechToText />}
           {hasAccessToActive && active === 'voices' && <ManageVoices />}
           {hasAccessToActive && active === 'whatsapp' && <WhatsAppCampaigns />}
-          {hasAccessToActive && active === 'sms' && <UnderDevelopment label="SMS Campaigns" description="Bulk & transactional SMS broadcasts — plan, send, and track delivery, right alongside your other channels." accent="blue" />}
-          {hasAccessToActive && active === 'rcs' && <UnderDevelopment label="RCS Messaging" description="Rich, interactive RCS messages with buttons, carousels, and media — the next step up from plain SMS." accent="purple" />}
+          {hasAccessToActive && active === 'sms' && <UnderDevelopment label="SMS Campaigns" description="Bulk & transactional SMS broadcasts â€” plan, send, and track delivery, right alongside your other channels." accent="blue" />}
+          {hasAccessToActive && active === 'rcs' && <UnderDevelopment label="RCS Messaging" description="Rich, interactive RCS messages with buttons, carousels, and media â€” the next step up from plain SMS." accent="purple" />}
           {hasAccessToActive && active === 'users' && <UserManagement />}
           {hasAccessToActive && active === 'campaigns' && (
             <Campaigns

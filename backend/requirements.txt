@@ -1,6 +1,7 @@
-fastapi==0.115.6
+﻿fastapi==0.115.6
 uvicorn[standard]==0.32.1
 pymongo==4.9.2
+psycopg[binary]==3.2.10
 certifi>=2024.7.4
 httpx==0.28.0
 pandas==2.2.3
