@@ -1,4 +1,4 @@
-﻿"""
+"""
 Every protected route depends on get_current_user (or one of the
 require_*() wrappers below), which:
   1. reads the Firebase ID token from the Authorization header
@@ -104,6 +104,22 @@ def get_current_user(request: Request) -> dict:
 
     if not profile.get("active", True):
         raise HTTPException(403, "This account has been deactivated. Contact your admin.")
+
+    # SMS is available to every authenticated active user. Keep the profile
+    # grants in sync so both frontend controls and backend routes agree.
+    if profile.get("role") == "user":
+        modules = list(profile.get("modules") or [])
+        services = list(profile.get("services") or [])
+        sms_services = ["sms:view", "sms:create", "sms:edit", "sms:send", "sms:trigger"]
+        changed = False
+        if "sms" not in modules:
+            modules.append("sms"); changed = True
+        for permission in sms_services:
+            if permission not in services:
+                services.append(permission); changed = True
+        if changed:
+            users_collection.update_one({"uid": uid}, {"$set": {"modules": modules, "services": services}})
+            profile["modules"] = modules; profile["services"] = services
 
     profile["_id"] = str(profile["_id"])
     return profile

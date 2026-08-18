@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import check_connection, ensure_indexes
-from app.routers import speech, stt, campaigns, users, whatsapp
+from app.routers import speech, stt, campaigns, users, whatsapp, sms
 
 app = FastAPI(title="OBD Suite API", version="1.0.0")
 
@@ -40,11 +40,13 @@ app.include_router(stt.router)
 app.include_router(campaigns.router)
 app.include_router(users.router)
 app.include_router(whatsapp.router)
+app.include_router(sms.router)
 
 
 @app.on_event("startup")
 def _startup():
     ensure_indexes()
+    sms.start_duplicate_retry_worker()
 
 
 @app.get("/")

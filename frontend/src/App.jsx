@@ -17,9 +17,10 @@ import ManageVoices from './components/ManageVoices.jsx'
 import WhatsAppCampaigns from './components/WhatsAppCampaigns.jsx'
 import UserManagement from './components/UserManagement.jsx'
 import UnderDevelopment from './components/UnderDevelopment.jsx'
+import SMSCampaigns from './components/SMSCampaigns.jsx'
 import AccessDenied from './components/AccessDenied.jsx'
 
-const ALL_MODULES = ['dashboard', 'campaigns', 'whatsapp', 'tts', 'stt', 'voices', 'users']
+const ALL_MODULES = ['dashboard', 'campaigns', 'whatsapp', 'sms', 'tts', 'stt', 'voices', 'users']
 const MODULE_LABEL = { dashboard: 'Dashboard', campaigns: 'Campaigns', whatsapp: 'WhatsApp', tts: 'Text to Speech', stt: 'Speech to Text', voices: 'Manage Voices', users: 'User Management', sms: 'SMS', rcs: 'RCS' }
 // SMS and RCS are placeholder "coming soon" pages with no real functionality
 // or data yet, so â€” unlike every other module â€” they're open to any signed-in
@@ -209,7 +210,7 @@ function AuthenticatedApp({ user }) {
           {hasAccessToActive && active === 'stt' && <SpeechToText />}
           {hasAccessToActive && active === 'voices' && <ManageVoices />}
           {hasAccessToActive && active === 'whatsapp' && <WhatsAppCampaigns />}
-          {hasAccessToActive && active === 'sms' && <UnderDevelopment label="SMS Campaigns" description="Bulk & transactional SMS broadcasts â€” plan, send, and track delivery, right alongside your other channels." accent="blue" />}
+          {hasAccessToActive && active === 'sms' && <SMSCampaigns />}
           {hasAccessToActive && active === 'rcs' && <UnderDevelopment label="RCS Messaging" description="Rich, interactive RCS messages with buttons, carousels, and media â€” the next step up from plain SMS." accent="purple" />}
           {hasAccessToActive && active === 'users' && <UserManagement />}
           {hasAccessToActive && active === 'campaigns' && (

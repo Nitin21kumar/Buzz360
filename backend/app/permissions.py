@@ -77,6 +77,11 @@ MODULE_CATALOG = {
         },
         "fields": [],
     },
+    "sms": {
+        "label": "SMS",
+        "services": {"view": "View SMS campaigns", "create": "Create SMS campaigns", "edit": "Add campaign contacts", "delete": "Delete draft SMS campaigns", "send": "Send individual SMS messages", "trigger": "Start SMS campaigns"},
+        "fields": [],
+    },
     "users": {
         "label": "User Management",
         "services": {
@@ -118,7 +123,7 @@ def default_permissions_for_role(role: str) -> dict:
         return {"modules": list(MODULE_CATALOG.keys()), "services": _all_services(), "fields": _all_fields()}
     return {
         "modules": [m for m in MODULE_CATALOG if m != "users"],
-        "services": [],
+        "services": [f"sms:{service}" for service in MODULE_CATALOG["sms"]["services"] if service != "delete"],
         "fields": [],
     }
 

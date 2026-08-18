@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutGrid, dot: '#22C55E' },
   { key: 'campaigns', label: 'Campaigns', icon: Megaphone, dot: '#7C5CFC' },
   { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, dot: '#25D366' },
-  { key: 'sms', label: 'SMS', icon: MessageSquareText, dot: '#3B82F6', alwaysVisible: true, badge: 'Soon' },
+  { key: 'sms', label: 'SMS', icon: MessageSquareText, dot: '#3B82F6', alwaysVisible: true },
   { key: 'rcs', label: 'RCS', icon: Radio, dot: '#A855F7', alwaysVisible: true, badge: 'Soon' },
   { key: 'tts', label: 'Text to Speech', icon: AudioLines, dot: '#3B82F6' },
   { key: 'stt', label: 'Speech to Text', icon: FileAudio, dot: '#F59E0B' },

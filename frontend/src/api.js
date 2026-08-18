@@ -87,7 +87,7 @@ export const uploadCampaignContacts = (id, file) => {
   return api.post(`/api/campaigns/${id}/upload-contacts`, form)
 }
 export const deleteCampaignContacts = (id) => api.delete(`/api/campaigns/${id}/contacts`)
-export const startCampaign = (id) => api.post(`/api/campaigns/${id}/start`)
+export const startCampaign = (id, provider = 'sarv') => api.post(`/api/campaigns/${id}/start`, { provider })
 export const getCampaignStatus = (id) => api.get(`/api/campaigns/${id}/status`)
 export const getCampaignReportUrl = (id) => `${API_BASE}/api/campaigns/${id}/report`
 export const downloadCampaignReport = (id) => downloadAuthenticatedFile(`/api/campaigns/${id}/report`, `campaign_${id}_report.xlsx`)
@@ -133,3 +133,16 @@ export const setConversationHandoff = (phoneNumber, handoff) =>
 export const sendManualMessage = (phoneNumber, text) =>
   api.post(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/send`, { text })
 export const getHandoffCount = () => api.get('/api/whatsapp/handoff-count')
+
+// --- SMS (ValueFirst) ---
+export const getSMSReadiness = () => api.get('/api/sms/readiness')
+export const sendSMS = (recipients, message, templateId) =>
+  api.post('/api/sms/send', { recipients, message, template_id: templateId })
+
+export const createSMSCampaign = (name, templateId, message) => api.post('/api/sms/campaigns', { name, template_id: templateId, message })
+export const listSMSCampaigns = () => api.get('/api/sms/campaigns')
+export const getSMSCampaign = (id) => api.get(`/api/sms/campaigns/${id}`)
+export const addSMSRecipients = (id, recipients) => api.post(`/api/sms/campaigns/${id}/recipients`, { recipients })
+export const uploadSMSRecipients = (id, file) => { const form=new FormData(); form.append('file',file); return api.post(`/api/sms/campaigns/${id}/upload`,form) }
+export const startSMSCampaign = (id) => api.post(`/api/sms/campaigns/${id}/start`)
+export const deleteSMSCampaign = (id) => api.delete(`/api/sms/campaigns/${id}`)
