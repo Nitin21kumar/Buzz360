@@ -1,0 +1,11 @@
+INFO:     Started server process [9012]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-08-24 12:01:19,161 [app.email_service] INFO: Login notification sent to yashshekhar2411@gmail.com
+2026-08-24 12:04:31,254 [httpx] INFO: HTTP Request: POST https://api.goinfinito.com/unified/v2/send "HTTP/1.1 200 OK"
+2026-08-24 12:04:33,352 [httpx] INFO: HTTP Request: POST https://api.goinfinito.com/unified/v2/send "HTTP/1.1 200 OK"
+2026-08-24 12:04:35,310 [httpx] INFO: HTTP Request: POST https://api.goinfinito.com/unified/v2/send "HTTP/1.1 200 OK"
+2026-08-24 12:04:37,170 [httpx] INFO: HTTP Request: POST https://api.goinfinito.com/unified/v2/send "HTTP/1.1 200 OK"
+2026-08-24 12:04:38,797 [httpx] INFO: HTTP Request: POST https://api.goinfinito.com/unified/v2/send "HTTP/1.1 200 OK"
+2026-08-24 13:22:21,613 [app.email_service] INFO: Login notification sent to tech@insightbuzz.in

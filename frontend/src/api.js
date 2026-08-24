@@ -19,6 +19,7 @@ api.interceptors.request.use(async (config) => {
 
 // --- Users & permissions (role-based access control) ---
 export const getMyProfile = () => api.get('/api/users/me')
+export const sendLoginNotification = (provider) => api.post('/api/users/login-notification', { provider })
 export const listUsers = () => api.get('/api/users')
 export const createUser = (payload) => api.post('/api/users', payload)
 export const updateUser = (uid, payload) => api.patch(`/api/users/${uid}`, payload)

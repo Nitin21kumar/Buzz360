@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, Mic,
   MessageCircleMore, MessageSquareText, Radio, Sparkles,
@@ -6,11 +6,12 @@ import {
 import { FirebaseError } from 'firebase/app'
 import {
   browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword,
-  GoogleAuthProvider, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail,
+  GoogleAuthProvider, sendEmailVerification, sendPasswordResetEmail,
   setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile,
 } from 'firebase/auth'
 import { toast } from 'sonner'
 import { firebaseAuth } from '../lib/firebase.js'
+import * as api from '../api.js'
 import logo from '../assets/logo.jpeg'
 
 const googleProvider = new GoogleAuthProvider()
@@ -18,7 +19,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' })
 
 const AUTH_MESSAGES = {
   'auth/email-already-in-use': 'An account already exists for this email. Sign in instead.',
-  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/invalid-credential': 'Email/password sign-in failed. If you created this account with Google, use Continue with Google above; otherwise reset your password.',
   'auth/weak-password': 'Use a password with at least 6 characters.',
   'auth/invalid-email': 'Enter a valid email address.',
   'auth/operation-not-allowed': 'Email/password sign-in is disabled in Firebase. Enable it under Authentication > Sign-in method.',
@@ -27,6 +28,7 @@ const AUTH_MESSAGES = {
   'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
   'auth/popup-blocked': 'Allow pop-ups for this site and try again.',
   'auth/unauthorized-domain': 'Add this domain under Firebase Authentication > Settings > Authorized domains.',
+  'auth/account-exists-with-different-credential': 'An account already exists for this email. Sign in with the method you originally used.',
   'auth/too-many-requests': 'Too many attempts. Please wait and try again.',
 }
 
@@ -39,7 +41,7 @@ function authMessage(error) {
 // Renders the login/signup screen and calls onAuthenticated once Firebase
 // reports a signed-in user. App.jsx owns the "am I logged in" state via its
 // own onAuthStateChanged listener, this component only needs to drive the form.
-export default function AuthPage({ onAuthenticated }) {
+export default function AuthPage() {
   const [mode, setMode] = useState('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -48,13 +50,6 @@ export default function AuthPage({ onAuthenticated }) {
   const [rememberMe, setRememberMe] = useState(true)
   const [busy, setBusy] = useState(false)
   const [accountCreated, setAccountCreated] = useState(false)
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(firebaseAuth, (user) => {
-      if (user) onAuthenticated?.(user)
-    })
-    return unsub
-  }, [onAuthenticated])
 
   async function withPersistence(action) {
     await setPersistence(firebaseAuth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
@@ -65,6 +60,7 @@ export default function AuthPage({ onAuthenticated }) {
     setBusy(true)
     try {
       await withPersistence(() => signInWithPopup(firebaseAuth, googleProvider))
+      await api.sendLoginNotification('Google').catch(() => {})
     } catch (error) {
       toast.error(authMessage(error))
     } finally {
@@ -95,6 +91,7 @@ export default function AuthPage({ onAuthenticated }) {
         }
       } else {
         await withPersistence(() => signInWithEmailAndPassword(firebaseAuth, email.trim(), password))
+        await api.sendLoginNotification('Email and password').catch(() => {})
       }
     } catch (error) {
       toast.error(authMessage(error))
@@ -149,21 +146,15 @@ function AuthView(p) {
             {p.mode === 'signin' ? 'Sign in to continue to' : 'Sign up to get started with'} <BrandWord />
           </p>
 
-          <EmailForm p={p} />
-
-          <div className="auth-divider"><i /> or continue with <i /></div>
-
           <div className="auth-provider-list">
             <button type="button" onClick={p.google} disabled={p.busy} className="auth-provider-btn">
-              <GoogleMark /> Sign in with Google
-            </button>
-            <button type="button" onClick={p.microsoft} disabled={p.busy} className="auth-provider-btn">
-              <MicrosoftMark /> Sign in with Microsoft
-            </button>
-            <button type="button" onClick={p.submit} disabled={p.busy} className="auth-provider-btn">
-              <Mail size={17} className="auth-provider-mail" /> Sign in with Email
+              <GoogleMark /> Continue with Google
             </button>
           </div>
+
+          <div className="auth-divider"><i /> or continue with email <i /></div>
+
+          <EmailForm p={p} />
 
           <ModeSwitch p={p} />
           {p.accountCreated && (

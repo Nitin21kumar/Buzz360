@@ -1,16 +1,45 @@
 import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from firebase_admin import auth as firebase_auth
 from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import get_current_user, require_permission
 from ..database import users_collection
 from ..firebase_admin_client import get_firebase_app
+from ..email_service import login_email_configured, send_login_notification
 from ..permissions import ASSIGNABLE_ROLES, MODULE_CATALOG, catalog_response, default_permissions_for_role
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+class LoginNotification(BaseModel):
+    provider: str = Field(default="Email", max_length=40)
+
+
+@router.post("/login-notification")
+def queue_login_notification(
+    payload: LoginNotification,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Queue a security email after an explicit successful sign-in."""
+    if not login_email_configured():
+        return {"queued": False, "reason": "smtp_not_configured"}
+
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else (request.client.host if request.client else "")
+    background_tasks.add_task(
+        send_login_notification,
+        user.get("email", ""),
+        user.get("name", ""),
+        payload.provider,
+        ip_address,
+        request.headers.get("user-agent", ""),
+    )
+    return {"queued": True}
 
 
 def _public(profile: dict) -> dict:

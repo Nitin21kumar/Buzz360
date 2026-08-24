@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from ..auth import require_permission, owner_filter, assert_owns_or_admin
 from ..database import campaigns_collection, contacts_collection, call_logs_collection, voice_folders_collection, tts_collection, check_connection
 from ..constants import LANGUAGE_DISPLAY
-from .. import sarv_client
+from .. import sarv_client, valuefirst_voice_client
 
 router = APIRouter(tags=["obd-campaigns"])
 logger = logging.getLogger("sarv_campaigns")
@@ -82,6 +82,10 @@ class CampaignCreate(BaseModel):
 
 class VoiceSourceUpdate(BaseModel):
     voice_source_folder_id: str
+
+
+class CampaignStart(BaseModel):
+    provider: str = "sarv"
 
 
 # --------------------------------------------------------------- campaigns --
@@ -243,7 +247,7 @@ def delete_contacts(campaign_id: str, user: dict = Depends(require_permission("c
 
 
 @router.post("/api/campaigns/{campaign_id}/start")
-def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: dict = Depends(require_permission("campaigns", "trigger"))):
+def start_campaign(campaign_id: str, payload: CampaignStart, background_tasks: BackgroundTasks, user: dict = Depends(require_permission("campaigns", "trigger"))):
     oid = _oid(campaign_id)
     campaign = campaigns_collection.find_one({"_id": oid})
     if not campaign:
@@ -257,31 +261,40 @@ def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, user: di
     if campaign.get("status", "draft") != "draft":
         raise HTTPException(400, "This campaign has already been launched — each campaign can only be started once.")
 
+    provider = payload.provider.strip().lower()
+    if provider not in ("sarv", "valuefirst"):
+        raise HTTPException(422, "Provider must be sarv or valuefirst")
+    if provider == "valuefirst":
+        try:
+            valuefirst_voice_client.config()
+        except valuefirst_voice_client.ValueFirstVoiceError as exc:
+            raise HTTPException(503, str(exc))
+
     has_default_audio = bool(campaign.get("audio_filename"))
     has_voice_folder = bool(campaign.get("voice_source_folder_id"))
     contacts_without_language = sum(1 for c in contacts if not c.get("language"))
     contacts_with_language = len(contacts) - contacts_without_language
 
-    if not has_default_audio and contacts_without_language > 0:
+    if provider == "sarv" and not has_default_audio and contacts_without_language > 0:
         raise HTTPException(
             400,
             f"{contacts_without_language} contact(s) have no language specified and there is no default "
             "campaign audio to fall back on. Either add a 'language' column value for every contact, "
             "or upload a default campaign audio file.",
         )
-    if not has_voice_folder and contacts_with_language > 0:
+    if provider == "sarv" and not has_voice_folder and contacts_with_language > 0:
         raise HTTPException(
             400,
             f"{contacts_with_language} contact(s) have a language specified, but no voice folder has been "
             "selected for this campaign yet. Pick a voice folder in Step 1 first.",
         )
 
-    campaigns_collection.update_one({"_id": oid}, {"$set": {"status": "running"}})
-    background_tasks.add_task(run_calls, campaign_id)
-    return {"message": f"Campaign started — {len(contacts)} calls have been queued"}
+    campaigns_collection.update_one({"_id": oid}, {"$set": {"status": "running", "provider": provider}})
+    background_tasks.add_task(run_calls, campaign_id, provider)
+    return {"message": f"Campaign started with {provider.title()} - {len(contacts)} calls have been queued"}
 
 
-def run_calls(campaign_id: str):
+def run_calls(campaign_id: str, provider: str = "sarv"):
     """Groups contacts by which recording they should hear, then fires the
     Sarv vb-api v2 /broadcasting request in batches of up to
     SARV_MAX_CONTACTS_PER_REQUEST numbers per call - passing audio_url
@@ -289,6 +302,11 @@ def run_calls(campaign_id: str):
     oid = ObjectId(campaign_id)
     campaign = campaigns_collection.find_one({"_id": oid})
     contacts = list(contacts_collection.find({"campaign_id": oid}))
+
+    if provider == "valuefirst":
+        _run_valuefirst_calls(oid, contacts)
+        campaigns_collection.update_one({"_id": oid}, {"$set": {"status": "completed"}})
+        return
 
     # PUBLIC_BASE_URL can be set manually (needed for ngrok/local); on Render
     # it's auto-filled from RENDER_EXTERNAL_URL, which Render sets to this
@@ -395,6 +413,25 @@ def run_calls(campaign_id: str):
 
     campaigns_collection.update_one({"_id": oid}, {"$set": {"status": "completed"}})
 
+
+def _run_valuefirst_calls(oid: ObjectId, contacts: list[dict]):
+    items = []
+    for contact in contacts:
+        log = {"campaign_id": oid, "contact_id": contact["_id"], "phone_number": contact["phone_number"], "language": contact.get("language"), "provider": "valuefirst", "status": "queued", "call_duration": 0, "started_at": datetime.utcnow(), "ended_at": None, "sarv_unique_id": None, "valuefirst_message_id": None, "error_message": None}
+        result = call_logs_collection.insert_one(log)
+        items.append({"call_log_id": result.inserted_id, "mobile": valuefirst_voice_client.normalize_mobile(contact["phone_number"])})
+    size = valuefirst_voice_client.MAX_ADDRESSES
+    for index in range(0, len(items), size):
+        batch = items[index:index + size]
+        try:
+            result = valuefirst_voice_client.trigger_calls([item["mobile"] for item in batch])
+            for item in batch:
+                call_logs_collection.update_one({"_id": item["call_log_id"]}, {"$set": {"status": "initiated", "valuefirst_message_id": result["message_id"]}})
+        except Exception as exc:
+            logger.warning("ValueFirst call request failed: %s", exc)
+            for item in batch:
+                call_logs_collection.update_one({"_id": item["call_log_id"]}, {"$set": {"status": "failed", "error_message": str(exc)[:500], "ended_at": datetime.utcnow()}})
+        time.sleep(1.5)
 
 def _sync_pending_calls_from_sarv(oid: ObjectId):
     """This vb-api v2 endpoint doesn't have a confirmed public "fetch report"

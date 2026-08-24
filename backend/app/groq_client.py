@@ -135,14 +135,14 @@ async def whatsapp_smart_reply(
     conversation_history: list[dict],
     campaign_context: str = "",
     knowledge_base: str = "",
-) -> dict:
+) -> dict: 
     """Generates a WhatsApp reply, aware of the recent conversation, an
     optional business knowledge base (FAQ/policies), and decides whether
     this needs a human. `conversation_history` is a list of
     {"direction": "in"|"out", "text": ...} in chronological order (most
     recent last). Returns {"reply": str, "buttons": list[str] (0-3, each
     <=20 chars), "needs_human": bool}."""
-    history_lines = []
+    history_lines = [] 
     for msg in conversation_history[-10:]:
         speaker = "Customer" if msg.get("direction") == "in" else "Business"
         history_lines.append(f"{speaker}: {msg.get('text', '')}")
@@ -165,7 +165,7 @@ async def whatsapp_smart_reply(
     )
     prompt = f"Conversation so far:\n{history_text}\n\nCustomer's new message: {incoming_message}"
     raw = await _call_groq(prompt, system_instruction)
-
+ 
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")

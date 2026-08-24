@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LoaderCircle, TriangleAlert } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { toast } from 'sonner'
@@ -123,7 +123,7 @@ function App() {
   }
 
   if (!user) {
-    return <AuthPage onAuthenticated={setUser} />
+    return <AuthPage />
   }
 
   if (loadingProfile || !profile || !catalog) {

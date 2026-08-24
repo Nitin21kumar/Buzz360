@@ -23,6 +23,7 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
   const [deletingId, setDeletingId] = useState(null)
   const [downloadingReportId, setDownloadingReportId] = useState(null)
   const [starting, setStarting] = useState(false)
+  const [callProvider, setCallProvider] = useState('sarv')
   const [status, setStatus] = useState(null)
 
   const activeCampaign = campaigns.find((c) => c.id === activeId) || null
@@ -163,7 +164,7 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
   const handleStart = async () => {
     setStarting(true)
     try {
-      const res = await api.startCampaign(activeId)
+      const res = await api.startCampaign(activeId, callProvider)
       alert(res.data.message + '\n\nThis campaign is now locked — it can only ever be launched once. Redirecting to Dashboard…')
       await loadCampaigns()
       // A campaign can only be launched once - send the user back to the Dashboard immediately.
@@ -276,6 +277,11 @@ export default function Campaigns({ initialCreate, onConsumeCreate, onGoToDashbo
 
             <div style={styles.card}>
               <div style={styles.stepLabel}><Play size={15} /> Step 3 — Start</div>
+              <label style={{ ...styles.hint, display: 'block', marginBottom: 6 }}>Calling service</label>
+              <select disabled={launched || starting} value={callProvider} onChange={(e) => setCallProvider(e.target.value)} style={{ ...styles.select, width: '100%' }}>
+                <option value="sarv">Sarv (uses campaign audio / voice library)</option>
+                <option value="valuefirst">ValueFirst (uses configured ValueFirst campaign)</option>
+              </select>
               <button
                 onClick={handleStart}
                 disabled={launched || starting}

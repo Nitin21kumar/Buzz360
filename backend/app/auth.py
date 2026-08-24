@@ -121,7 +121,7 @@ def get_current_user(request: Request) -> dict:
             users_collection.update_one({"uid": uid}, {"$set": {"modules": modules, "services": services}})
             profile["modules"] = modules; profile["services"] = services
 
-    profile["_id"] = str(profile["_id"])
+    # Freshly inserted profiles are not guaranteed to receive the generated`r`n    # Mongo _id in this in-memory dict (driver/wrapper dependent). The API and`r`n    # authorization logic use Firebase uid, so serialize _id only when present.`r`n    if "_id" in profile:`r`n        profile["_id"] = str(profile["_id"])
     return profile
 
 
