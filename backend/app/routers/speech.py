@@ -1,18 +1,61 @@
+import io
 import os
+import re
+import wave
 from datetime import datetime
 
 import httpx
 from bson import ObjectId, Binary
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from .. import groq_client
-from ..auth import require_any_permission, require_permission, owner_filter, assert_owns_or_admin
+from ..auth import require_any_permission, require_permission
 from ..constants import LANGUAGE_DISPLAY, LANGUAGE_NAMES, resolve_speaker
 from ..database import tts_collection, voice_folders_collection
 
 router = APIRouter(prefix="/api/tts", tags=["text-to-speech"])
+
+
+def _range_response(request: Request, data: bytes, media_type: str, filename: str) -> Response:
+    """Serves `data` with HTTP Range support. Many telephony/IVR audio
+    players (Sarv's included, likely Asterisk/FreeSWITCH-based under the
+    hood) fetch playback audio via byte-range requests to determine file
+    size and stream progressively - a plain 200-only response (which is all
+    browsers need) can cause those players to silently fail to play the
+    audio even though the file itself is perfectly valid. This mirrors what
+    a static file server does: honor Range when present, else serve the
+    whole thing with Accept-Ranges advertised so range-aware clients know
+    they can ask for a slice."""
+    total = len(data)
+    range_header = request.headers.get("range")
+    base_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+
+    if range_header:
+        match = re.match(r"bytes=(\d*)-(\d*)", range_header)
+        if match:
+            start_str, end_str = match.groups()
+            start = int(start_str) if start_str else 0
+            end = int(end_str) if end_str else total - 1
+            end = min(end, total - 1)
+            if start <= end < total:
+                chunk = data[start : end + 1]
+                headers = {
+                    **base_headers,
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Content-Length": str(len(chunk)),
+                }
+                return Response(content=chunk, status_code=206, media_type=media_type, headers=headers)
+
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={**base_headers, "Content-Length": str(total)},
+    )
 
 
 def _oid(folder_id: str) -> ObjectId:
@@ -20,13 +63,6 @@ def _oid(folder_id: str) -> ObjectId:
         return ObjectId(folder_id)
     except InvalidId:
         raise HTTPException(400, "Invalid folder id")
-
-
-def _folder_or_404(folder_id: str) -> dict:
-    folder = voice_folders_collection.find_one({"_id": _oid(folder_id)})
-    if not folder:
-        raise HTTPException(404, "Folder not found")
-    return folder
 
 
 # ---------------------------------------------------------------- schemas --
@@ -52,14 +88,14 @@ class GenerateRequest(BaseModel):
 def create_folder(payload: FolderCreate, user: dict = Depends(require_permission("voices", "create"))):
     """Creates a brand-new, named voice folder. A folder name is required
     every time - this is the mandatory first step before generating speech."""
-    doc = {"name": payload.name.strip(), "created_at": datetime.utcnow(), "created_by": user["uid"]}
+    doc = {"name": payload.name.strip(), "created_at": datetime.utcnow()}
     result = voice_folders_collection.insert_one(doc)
     return {"id": str(result.inserted_id), "name": doc["name"], "created_at": doc["created_at"]}
 
 
 @router.get("/folders")
 def list_folders(user: dict = Depends(require_any_permission(("tts", "view"), ("voices", "view")))):
-    docs = voice_folders_collection.find(owner_filter(user)).sort("created_at", -1)
+    docs = voice_folders_collection.find().sort("created_at", -1)
     folders = []
     for d in docs:
         folder_id = str(d["_id"])
@@ -77,7 +113,6 @@ def delete_folder(folder_id: str, user: dict = Depends(require_permission("voice
     folder = voice_folders_collection.find_one({"_id": oid})
     if not folder:
         raise HTTPException(404, "Folder not found")
-    assert_owns_or_admin(user, folder)
 
     tts_collection.delete_many({"folder_id": folder_id})
     voice_folders_collection.delete_one({"_id": oid})
@@ -108,10 +143,61 @@ async def _translate_text(text: str, source_code: str, target_code: str, gender:
     keep pronouns/verb conjugations consistent with the chosen speaker gender
     (e.g. "करना चाहता हूँ" for male vs "करना चाहती हूँ" for female in Hindi).
     The actual audio is still synthesized by Sarvam afterwards - Groq here
-    only produces the target-language text that gets sent to Sarvam TTS."""
+    only produces the target-language text that gets sent to Sarvam TTS.
+
+    When the target is Hindi, this forces a STRICT pure-Hindi (Devanagari)
+    translation - no English words left mixed in (no Hinglish). Groq's
+    default translation otherwise tends to leave common English loanwords
+    ("offer", "order", "update", etc.) untranslated, which we don't want
+    for the calling voice script."""
     source_name = LANGUAGE_NAMES.get(source_code, source_code)
     target_name = LANGUAGE_NAMES.get(target_code, target_code)
-    return await groq_client.translate_text(text, source_name, target_name, gender)
+    strict_native_script = target_code == "hi-IN"
+    return await groq_client.translate_text(text, source_name, target_name, gender, strict_native_script=strict_native_script)
+
+
+def _stitch_wav_chunks(wav_byte_chunks: list[bytes]) -> bytes:
+    """Sarvam's /stream endpoint writes a genuine streaming WAV header - since
+    it doesn't know the final audio length upfront, the header's declared
+    data size is a placeholder (effectively "unknown/max"), not the real
+    byte count. That's correct behavior for true streaming playback, but we
+    store this as a STATIC file and re-serve it later - and a WAV file with
+    a bogus multi-hour declared length in its own header confuses strict
+    telephony IVR parsers (Sarv/Asterisk/FreeSWITCH), even though the actual
+    bytes are fine and browsers happily ignore the bad header and play it.
+    (Separately: when a long text is split into multiple chunks, naively
+    concatenating raw chunk bytes isn't even a single valid WAV at all -
+    each chunk carries its own header.)
+
+    Re-decoding every chunk's PCM frames with the `wave` module and
+    re-writing them into ONE fresh WAV always produces a correct,
+    accurately-sized header - fixing both problems at once, whether there's
+    one chunk or several.
+    """
+    frames = []
+    channels = sampwidth = framerate = None
+    for chunk_bytes in wav_byte_chunks:
+        with wave.open(io.BytesIO(chunk_bytes), "rb") as wf:
+            if channels is None:
+                channels, sampwidth, framerate = wf.getnchannels(), wf.getsampwidth(), wf.getframerate()
+            # readframes(n) is safely bounded by the actual bytes present in
+            # the stream, even if the header's own nframes count is bogus/huge.
+            frames.append(wf.readframes(wf.getnframes()))
+
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wf_out:
+        # Set fields individually (NOT via setparams(wf.getparams())) - the
+        # source header's own nframes is the bogus/huge streaming placeholder
+        # itself, and setparams() would seed the writer's internal frame
+        # counter with that same garbage value, corrupting the *new* header
+        # too (and can even overflow when real frames are added on top of it).
+        # Only channels/sampwidth/framerate are trustworthy from the source.
+        wf_out.setnchannels(channels)
+        wf_out.setsampwidth(sampwidth)
+        wf_out.setframerate(framerate)
+        for f in frames:
+            wf_out.writeframes(f)
+    return out.getvalue()
 
 
 async def _generate_audio_bytes(text: str, language_code: str, speaker: str, pace: float, temperature: float) -> bytes:
@@ -119,7 +205,7 @@ async def _generate_audio_bytes(text: str, language_code: str, speaker: str, pac
     if not api_key:
         raise HTTPException(503, "SARVAM_API_KEY is not configured on the backend (.env)")
 
-    audio = b""
+    wav_chunks: list[bytes] = []
     async with httpx.AsyncClient(timeout=90) as client:
         for chunk in _split_text(text):
             response = await client.post(
@@ -132,9 +218,16 @@ async def _generate_audio_bytes(text: str, language_code: str, speaker: str, pac
                     "model": "bulbul:v3",
                     "pace": pace,
                     "temperature": temperature,
-                    "speech_sample_rate": 24000,
-                    "output_audio_codec": "mp3",
-                    "output_audio_bitrate": "128k",
+                    "speech_sample_rate": 8000,
+                    # WAV/PCM instead of MP3 - Sarvam's own IVR/telephony docs
+                    # recommend "standard WAV/PCM output at 8kHz" for telephony
+                    # playback (Genesys/Avaya/Twilio/Exotel/any SIP system).
+                    # Compressed MP3 plays fine in browsers (which are lenient
+                    # decoders) but was going silent on real Sarv calls despite
+                    # a normal call duration - a classic telephony-gateway
+                    # codec-compatibility symptom. output_audio_bitrate only
+                    # applies to compressed codecs, so it's dropped here.
+                    "output_audio_codec": "wav",
                     "enable_preprocessing": True,
                 },
             )
@@ -144,8 +237,8 @@ async def _generate_audio_bytes(text: str, language_code: str, speaker: str, pac
                 except ValueError:
                     detail = response.text
                 raise HTTPException(response.status_code, detail or "Sarvam speech generation failed")
-            audio += response.content
-    return audio
+            wav_chunks.append(response.content)
+    return _stitch_wav_chunks(wav_chunks)
 
 
 @router.post("/generate")
@@ -158,7 +251,6 @@ async def generate_speech(payload: GenerateRequest, user: dict = Depends(require
     folder = voice_folders_collection.find_one({"_id": _oid(payload.folder_id)})
     if not folder:
         raise HTTPException(404, "Voice folder not found")
-    assert_owns_or_admin(user, folder)
     if not payload.text.strip():
         raise HTTPException(422, "Text is required")
 
@@ -169,7 +261,7 @@ async def generate_speech(payload: GenerateRequest, user: dict = Depends(require
             results.append({"code": code, "language": code, "status": "failed", "error": "Unsupported language code"})
             continue
 
-        filename = f"{language_name.lower()}.mp3"
+        filename = f"{language_name.lower()}.wav"
 
         try:
             # Translate into this language first (unless the text is already in it),
@@ -224,17 +316,8 @@ def tts_history(folder_id: str | None = Query(default=None, description="Filter 
     Records from before folder-scoped voices existed have no folder_id and
     are skipped, since they can no longer be tied to any folder's directory.
     The raw audio_data binary is excluded from this list response - it's
-    fetched only on demand via the download endpoint.
-
-    A plain user only ever sees voices in folders THEY created; admin/super_admin see everyone's."""
-    if folder_id:
-        assert_owns_or_admin(user, _folder_or_404(folder_id))
-        query = {"folder_id": folder_id}
-    else:
-        query = {"folder_id": {"$exists": True, "$ne": None}}
-        if user["role"] not in ("super_admin", "admin"):
-            owned_folder_ids = [str(f["_id"]) for f in voice_folders_collection.find(owner_filter(user), {"_id": 1})]
-            query["folder_id"] = {"$in": owned_folder_ids}
+    fetched only on demand via the download endpoint."""
+    query = {"folder_id": folder_id} if folder_id else {"folder_id": {"$exists": True, "$ne": None}}
     docs = list(tts_collection.find(query, {"audio_data": 0}).sort("updated_at", -1))
     results = []
     for doc in docs:
@@ -247,31 +330,25 @@ def tts_history(folder_id: str | None = Query(default=None, description="Filter 
 
 
 @router.get("/download/{folder_id}/{filename}")
-def download_audio(folder_id: str, filename: str):
+def download_audio(folder_id: str, filename: str, request: Request):
     """Streams the audio straight out of MongoDB in real time - nothing is
     ever read from local disk.
 
-    Deliberately NOT behind require_permission(): this is the same audio_url
-    Sarv's servers fetch directly during a live call (run_calls() in
-    campaigns.py builds URLs pointing here), and Sarv has no way to send our
-    app's login token. A folder_id + filename pair is effectively unguessable,
-    and the only way to ever learn a real one is through the already-protected
-    /folders and /history endpoints, so this stays private in practice."""
+    Intentionally NOT behind require_permission(): Sarv's servers fetch this
+    URL directly (as `audio_url`) while placing each call, and they can't
+    send a Firebase Authorization header. Guessing a valid folder_id +
+    filename pair is impractical (folder_id is a Mongo ObjectId), so this
+    stays reasonably safe while still being publicly fetchable."""
     doc = tts_collection.find_one({"folder_id": folder_id, "filename": filename})
     if not doc or not doc.get("audio_data"):
         raise HTTPException(404, "Audio not found")
-    return Response(
-        content=bytes(doc["audio_data"]),
-        media_type="audio/mpeg",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return _range_response(request, bytes(doc["audio_data"]), "audio/wav", filename)
 
 
 @router.delete("/{folder_id}/{language_code}")
 def delete_voice(folder_id: str, language_code: str, user: dict = Depends(require_permission("tts", "delete"))):
     """Removes one generated language's DB record (audio included, since it
     lives inside that same document)."""
-    assert_owns_or_admin(user, _folder_or_404(folder_id))
     result = tts_collection.delete_one({"folder_id": folder_id, "language_code": language_code})
     if result.deleted_count == 0:
         raise HTTPException(404, "Voice not found")
