@@ -1,0 +1,72 @@
+{
+  "1007695683888533813": {
+    "template_id": "1007695683888533813",
+    "label": "Packaged Products SMS -Mani puri পেক্কেজ প্রদক এস এম এস-",
+    "content": "মতম পুমবদা এমআরপী, এমএপজী/ এক্সপ‍্যারি দেৎ, নেৎ ক্বানতিতি চেক তৌবিয়ু। কনজুমর বাকৎকিদমক নেসনেল কনজ‍্যুমর হেল্পলাইন 1915 দাইল তৌবিয়ু। জাগো গ্রহক জাগো- ভারত সরকার।",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007454772906933593": {
+    "template_id": "1007454772906933593",
+    "label": "Packaged Products SMS -BODO पेकेज खालामजानाय दिहुनथाइ SMS",
+    "content": "जेब्लाबो एमआरपी, दिहुननाय/जोबनाय खालार, नेट बिबां बायदिफोरखौ नाय। बाहायगिरिनि अजदफोरनि थाखाय, हादोरारि बाहायग्रा हेल्पलाइन नम्बर 1915 आव डायल खालाम। जाग’ ग्राहक जाग’ - भारत सोरखार",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007270215549461334": {
+    "template_id": "1007270215549461334",
+    "label": "Packaged Products SMS -NEPALI प्याकेज्ड प्रोडक्ट्स एसएमएस-",
+    "content": "सधैँ एमआरपी, उत्पादन/समाप्ति मिति, शुद्ध मात्रा, आदिको जाँच गर्नुहोस्। उपभोक्ता गुनासोहरूका लागि राष्ट्रीय उपभोक्ता हेल्पलाइन नम्बर 1915 डायल गर्नुहोस्।जाग ग्राहक जाग – भारत सरकार",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007884647202559623": {
+    "template_id": "1007884647202559623",
+    "label": "ISI MARK SMS-English",
+    "content": "Always check ISI Mark, for quality and safety.  Dial National Consumer Helpline 1915 for consumer grievance. Jago Grahak Jago-GoI",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007634333489627486": {
+    "template_id": "1007634333489627486",
+    "label": "Packaged Products SMS -Mani puri পেক্কেজ প্রদক এস এম এস-",
+    "content": "মতম পুমবদা এমআরপী, এমএপজী/ এক্সপ‍্যারি দেৎ, নেৎ ক্বানতিতি চেক তৌবিয়ু। কনজুমর বাকৎকিদমক নেসনেল কনজ‍্যুমর হেল্পলাইন 1915 দাইল তৌবিয়ু। জাগো গ্রহক জাগো- ভারত সরকার।",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007916318134070898": {
+    "template_id": "1007916318134070898",
+    "label": "Packaged Products SMS - Hindi",
+    "content": "हमेशा एमआरपी, निर्माण / समाप्ति तिथि, शुद्ध मात्रा आदि जांचें। उपभोक्ता शिकायतों के लिए राष्ट्रीय उपभोक्ता हेल्पलाइन नंबर 1915 डायल करें।",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007756670710396866": {
+    "template_id": "1007756670710396866",
+    "label": "NCH SMS -NEPALI",
+    "content": "उपभोक्ता गुनासोको निवारणका लागि राष्ट्रीय उपभोक्ता हेल्पलाइन 1915 डायल गर्नुहोस् वा  8800001915 मा ह्वाट्सएप गर्नुहोस्जाग ग्राहक जाग – भारत सरकार",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007887192858716425": {
+    "template_id": "1007887192858716425",
+    "label": "ISI MARK SMS- Hindi आईएसआई मार्क एसएमएस",
+    "content": "गुणवत्ता और सुरक्षा के लिए हमेशा आईएसआई मार्क जांचें। उपभोक्ता शिकायत के लिए राष्ट्रीय उपभोक्ता हेल्पलाइन 1915 डायल करें।",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007955714458147869": {
+    "template_id": "1007955714458147869",
+    "label": "Service charge -English",
+    "content": "A hotel or restaurant cannot add a service charge to your food bill without your consent. In case of disagreement, register your complaint by calling 1915. Jago Grahak Jago – Government of India.",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  },
+  "1007463437613896537": {
+    "template_id": "1007463437613896537",
+    "label": "Service charge -HINDI",
+    "content": "होटल या रेस्टोरेंट आपके खाने के बिल में सर्विस चार्ज नहीं जोड़ सकता। असहमति होने पर 1915 पर शिकायत दर्ज करें। जागो ग्राहक जागो - भारत सरकार",
+    "sender_id": "NCHSMS",
+    "content_type": "Service Implicit"
+  }
+}

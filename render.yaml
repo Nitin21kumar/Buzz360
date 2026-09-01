@@ -1,0 +1,127 @@
+
+databases:
+  - name: buzz360-db
+    databaseName: buzz360
+    user: buzz360_app
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: obd-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: buzz360-db
+          property: connectionString
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+
+      - key: SARV_USER_ID
+        sync: false
+      - key: SARV_USER_TOKEN
+        sync: false
+      - key: SARV_PLAN_ID
+        sync: false
+      - key: SARV_PLAN_TYPE
+        value: C
+      - key: SARV_INCLUDES_COUNTRY_CODE
+        value: N
+      - key: SARV_WEBHOOK_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: DOWNLOAD_SIGNING_SECRET
+        generateValue: true
+
+      - key: VALUE_FIRST_SMS_API_KEY
+        sync: false
+      - key: VALUE_FIRST_CLIENT_ID
+        sync: false
+      - key: VALUE_FIRST_PASSWORD
+        sync: false
+      - key: VALUE_FIRST_SMS_SENDER_ID
+        sync: false
+      - key: VALUE_FIRST_SMS_TEMPLATE_IDS
+        sync: false
+
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+
+      - key: FIREBASE_SERVICE_ACCOUNT_PATH
+        value: /etc/secrets/firebase-service-account.json
+
+  - type: web
+    name: whatsapp-service
+    runtime: docker
+    rootDir: whatsapp-service
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: buzz360-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: SARV_WABA_AUTHKEY
+        sync: false
+      - key: SARV_WABA_BASE_URL
+        value: https://waba.sarv.com/restapi
+      - key: MAX_CONTACTS_PER_CAMPAIGN
+        value: "50000"
+      - key: WHATSAPP_STATUS_WEBHOOK_SECRET
+        generateValue: true
+      - key: WEBHOOK_RATE_LIMIT_PER_MIN
+        value: "6000"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_PATH
+        value: /etc/secrets/firebase-service-account.json
+
+  - type: web
+    name: obd-gateway
+    runtime: docker
+    rootDir: gateway
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: BACKEND_URL
+        sync: false
+      - key: WHATSAPP_URL
+        sync: false
+
+  - type: web
+    name: obd-frontend
+    runtime: docker
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
+      - key: VITE_FIREBASE_MEASUREMENT_ID
+        sync: false

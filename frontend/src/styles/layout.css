@@ -1,0 +1,59 @@
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-app);
+}
+
+.app-content-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: 32px 40px;
+  box-sizing: border-box;
+}
+
+.app-main--flush {
+  padding: 18px 24px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-main--whatsapp {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 1180px) {
+  .app-main { padding: 24px; }
+
+  .app-main--flush { padding: 16px 18px; }
+}
+
+@media (max-width: 860px) {
+  .app-shell { flex-direction: column; }
+  .app-main { padding: 16px; }
+
+  .app-main--flush {
+    padding: 16px;
+    height: auto;
+    overflow: visible;
+  }
+  .app-main--whatsapp {
+    height: auto;
+    overflow: visible;
+    display: block;
+  }
+}
